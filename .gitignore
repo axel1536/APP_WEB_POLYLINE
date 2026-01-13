@@ -1,0 +1,17 @@
+# Entorno virtual (NO subir)
+.venv/
+venv/
+
+# Secrets (NO subir)
+.streamlit/secrets.toml
+
+# Datos locales generados (NO subir)
+obras/
+
+# Cache
+__pycache__/
+*.pyc
+.DS_Store
+
+Thumbs.db
+*.log
