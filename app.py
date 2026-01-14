@@ -6,7 +6,7 @@ import io
 import base64
 import traceback
 import requests
-import caja_chica
+import mostrar_caja_chica
 
 # PDF
 from reportlab.lib.pagesizes import A4
