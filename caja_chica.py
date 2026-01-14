@@ -44,16 +44,16 @@ def mostrar_caja_chica():
     usuario = st.session_state.get("usuario_logueado", "desconocido")
     es_jefe = st.session_state["auth"] == "jefe"
 
-    # Nombre de la obra arriba (tomado de la app principal)
+    # Nombre de la obra arriba
     obra_nombre = st.session_state.get("obra_nombre", "Obra seleccionada")
     st.header(f"Obra: {obra_nombre}")
     st.subheader("Caja Chica")
 
-    # Totales arriba (lo que pediste)
+    # Totales separados arriba (lo que pediste)
     ingresos, egresos_aprobados, saldo = calcular_totales()
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Ingresos", f"S/ {ingresos:,.2f}")
-    col2.metric("Total Egresos aprobados", f"S/ {egresos_aprobados:,.2f}")
+    col1.metric("Total Ingresos", f"S/ {ingresos:,.2f}", delta_color="normal")
+    col2.metric("Total Egresos aprobados", f"S/ {egresos_aprobados:,.2f}", delta_color="inverse")
     col3.metric("Saldo actual", f"S/ {saldo:,.2f}", delta_color="normal")
 
     tab_reg, tab_mis, tab_apr = st.tabs(["Registrar", "Mis movimientos", "Aprobaciones"])
