@@ -44,10 +44,9 @@ def mostrar_caja_chica():
     usuario = st.session_state.get("usuario_logueado", "desconocido")
     es_jefe = st.session_state["auth"] == "jefe"
 
-    obra_nombre = st.session_state.get("obra_nombre", "Obra seleccionada")
-    st.header(f"Obra: {obra_nombre}")
     st.subheader("Caja Chica")
 
+    # Totales arriba
     ingresos, egresos_aprobados, saldo = calcular_totales()
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Ingresos", f"S/ {ingresos:,.2f}", delta_color="normal")
@@ -57,13 +56,14 @@ def mostrar_caja_chica():
     tab_reg, tab_mis, tab_apr = st.tabs(["Registrar", "Mis movimientos", "Aprobaciones"])
 
     with tab_reg:
+        # Formulario para INGRESOS (solo jefe)
         st.markdown("### Registrar Ingreso (reposición)")
         if not es_jefe:
             st.info("Solo el jefe puede registrar ingresos/reposiciones")
         else:
             with st.form("form_ingreso"):
-                monto_ing = st.number_input("Monto S/. (reposición)", min_value=0.01, step=0.01, format="%.2f", key="monto_ing")
-                desc_ing = st.text_input("Descripción / motivo de la reposición", key="desc_ing")
+                monto_ing = st.number_input("Monto S/.", min_value=0.01, step=0.01, format="%.2f", key="monto_ing")
+                desc_ing = st.text_input("Descripción / motivo", key="desc_ing")
                 cat_ing = st.selectbox("Categoría", [
                     "Reposición fondo", "Transferencia banco", "Otros ingresos"
                 ], key="cat_ing")
@@ -91,10 +91,11 @@ def mostrar_caja_chica():
 
         st.divider()
 
+        # Formulario para EGRESOS (todos)
         st.markdown("### Registrar Egreso (gasto)")
         with st.form("form_egreso"):
-            monto_egr = st.number_input("Monto S/. (gasto)", min_value=0.01, step=0.01, format="%.2f", key="monto_egr")
-            desc_egr = st.text_input("Descripción / motivo del gasto", key="desc_egr")
+            monto_egr = st.number_input("Monto S/.", min_value=0.01, step=0.01, format="%.2f", key="monto_egr")
+            desc_egr = st.text_input("Descripción / motivo", key="desc_egr")
             cat_egr = st.selectbox("Categoría", [
                 "Viáticos", "Transporte", "Materiales menores", "Limpieza/oficina", "Imprevistos", "Otros"
             ], key="cat_egr")
