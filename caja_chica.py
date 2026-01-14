@@ -44,12 +44,10 @@ def mostrar_caja_chica():
     usuario = st.session_state.get("usuario_logueado", "desconocido")
     es_jefe = st.session_state["auth"] == "jefe"
 
-    # Nombre de la obra arriba
     obra_nombre = st.session_state.get("obra_nombre", "Obra seleccionada")
     st.header(f"Obra: {obra_nombre}")
     st.subheader("Caja Chica")
 
-    # Totales arriba
     ingresos, egresos_aprobados, saldo = calcular_totales()
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Ingresos", f"S/ {ingresos:,.2f}", delta_color="normal")
@@ -59,7 +57,6 @@ def mostrar_caja_chica():
     tab_reg, tab_mis, tab_apr = st.tabs(["Registrar", "Mis movimientos", "Aprobaciones"])
 
     with tab_reg:
-        # Formulario para INGRESOS (solo jefe)
         st.markdown("### Registrar Ingreso (reposición)")
         if not es_jefe:
             st.info("Solo el jefe puede registrar ingresos/reposiciones")
@@ -94,7 +91,6 @@ def mostrar_caja_chica():
 
         st.divider()
 
-        # Formulario para EGRESOS (todos)
         st.markdown("### Registrar Egreso (gasto)")
         with st.form("form_egreso"):
             monto_egr = st.number_input("Monto S/. (gasto)", min_value=0.01, step=0.01, format="%.2f", key="monto_egr")
