@@ -469,7 +469,7 @@ if st.session_state.get("pagina") == "caja":
     if st.button("Volver"):
         st.session_state["pagina"] = None
         st.rerun()
-    mostrar_caja_chica()
+    def mostrar_caja_chica()
     st.stop()
 
 # =========================
