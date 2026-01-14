@@ -49,16 +49,47 @@ def mostrar_caja_chica():
     st.header(f"Obra: {obra_nombre}")
     st.subheader("Caja Chica")
 
-    # Totales separados arriba (lo que pediste)
+    # Saldo actual arriba
     ingresos, egresos_aprobados, saldo = calcular_totales()
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Ingresos", f"S/ {ingresos:,.2f}", delta_color="normal")
-    col2.metric("Total Egresos aprobados", f"S/ {egresos_aprobados:,.2f}", delta_color="inverse")
-    col3.metric("Saldo actual", f"S/ {saldo:,.2f}", delta_color="normal")
+    st.metric("Saldo actual", f"S/ {saldo:,.2f}", delta_color="normal")
 
-    tab_reg, tab_mis, tab_apr = st.tabs(["Registrar", "Mis movimientos", "Aprobaciones"])
+    # Total Ingresos + tabla de ingresos
+    st.markdown("### Total Ingresos (reposiciones)")
+    st.metric("", f"S/ {ingresos:,.2f}", delta_color="normal")
 
-    with tab_reg:
+    df = cargar_movimientos()
+    ingresos_df = df[df["tipo"] == "ingreso"]
+    if ingresos_df.empty:
+        st.info("No hay ingresos registrados aún")
+    else:
+        st.dataframe(
+            ingresos_df[["fecha", "monto", "descripcion", "categoria", "estado", "aprobado_por"]].sort_values("fecha", ascending=False),
+            use_container_width=True,
+            hide_index=True,
+            column_config={"monto": st.column_config.NumberColumn("Monto", format="S/. %.2f")}
+        )
+
+    # Total Egresos aprobados + tabla de egresos aprobados
+    st.markdown("### Total Egresos aprobados (gastos)")
+    st.metric("", f"S/ {egresos_aprobados:,.2f}", delta_color="inverse")
+
+    egresos_aprobados_df = df[(df["tipo"] == "egreso") & (df["estado"] == "Aprobado")]
+    if egresos_aprobados_df.empty:
+        st.info("No hay egresos aprobados aún")
+    else:
+        st.dataframe(
+            egresos_aprobados_df[["fecha", "monto", "descripcion", "categoria", "estado", "aprobado_por"]].sort_values("fecha", ascending=False),
+            use_container_width=True,
+            hide_index=True,
+            column_config={"monto": st.column_config.NumberColumn("Monto", format="S/. %.2f")}
+        )
+
+    # Botón de registrar
+    if st.button("Registrar nuevo movimiento"):
+        st.session_state["mostrar_form_registro"] = True
+        st.rerun()
+
+    if st.session_state.get("mostrar_form_registro", False):
         with st.form("form_registro_caja"):
             tipo = st.radio("Tipo", ["Egreso (gasto)", "Ingreso (reposición)"], horizontal=True)
             tipo_val = "egreso" if "Egreso" in tipo else "ingreso"
@@ -70,68 +101,60 @@ def mostrar_caja_chica():
             ])
             comprobante = st.file_uploader("Comprobante (foto/PDF)", type=["jpg", "png", "pdf"])
 
-            if st.form_submit_button("Registrar"):
-                if monto > 0:
-                    ruta = guardar_comprobante(comprobante, usuario) if comprobante else ""
-                    mov = {
-                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "usuario": usuario,
-                        "tipo": tipo_val,
-                        "monto": monto,
-                        "descripcion": descripcion,
-                        "categoria": categoria,
-                        "comprobante": ruta,
-                        "estado": "Aprobado" if tipo_val == "ingreso" else "Pendiente",
-                        "aprobado_por": "Sistema" if tipo_val == "ingreso" else ""
-                    }
-                    guardar_movimiento(mov)
-                    st.success("Movimiento registrado correctamente")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.form_submit_button("Registrar"):
+                    if monto > 0:
+                        ruta = guardar_comprobante(comprobante, usuario) if comprobante else ""
+                        mov = {
+                            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "usuario": usuario,
+                            "tipo": tipo_val,
+                            "monto": monto,
+                            "descripcion": descripcion,
+                            "categoria": categoria,
+                            "comprobante": ruta,
+                            "estado": "Aprobado" if tipo_val == "ingreso" else "Pendiente",
+                            "aprobado_por": "Sistema" if tipo_val == "ingreso" else ""
+                        }
+                        guardar_movimiento(mov)
+                        st.success("Movimiento registrado correctamente")
+                        st.session_state["mostrar_form_registro"] = False
+                        st.rerun()
+                    else:
+                        st.error("El monto debe ser mayor a 0")
+            with col2:
+                if st.form_submit_button("Cancelar"):
+                    st.session_state["mostrar_form_registro"] = False
                     st.rerun()
-                else:
-                    st.error("El monto debe ser mayor a 0")
 
-    with tab_mis:
-        df = cargar_movimientos()
-        mios = df[df["usuario"] == usuario]
-        if mios.empty:
-            st.info("No tienes movimientos registrados aún")
+    # Pestaña Aprobaciones (solo jefe)
+    if es_jefe:
+        st.subheader("Aprobaciones pendientes")
+        pendientes = df[(df["tipo"] == "egreso") & (df["estado"] == "Pendiente")]
+        if pendientes.empty:
+            st.success("No hay gastos pendientes")
         else:
-            st.dataframe(
-                mios[["fecha", "tipo", "monto", "descripcion", "categoria", "estado"]].sort_values("fecha", ascending=False),
-                use_container_width=True,
-                hide_index=True,
-                column_config={"monto": st.column_config.NumberColumn("Monto", format="S/. %.2f")}
-            )
-
-    with tab_apr:
-        if not es_jefe:
-            st.info("Solo el jefe puede aprobar movimientos")
-        else:
-            df = cargar_movimientos()
-            pendientes = df[(df["tipo"] == "egreso") & (df["estado"] == "Pendiente")]
-            if pendientes.empty:
-                st.success("No hay gastos pendientes de aprobación")
-            else:
-                for idx, row in pendientes.iterrows():
-                    with st.expander(f"{row['fecha']} | {row['usuario']} | S/ {row['monto']:.2f}"):
-                        st.write("**Descripción:**", row["descripcion"])
-                        st.write("**Categoría:**", row["categoria"])
-                        if row["comprobante"]:
-                            if row["comprobante"].lower().endswith((".jpg", ".png", ".jpeg")):
-                                st.image(row["comprobante"], use_column_width=True)
-                            else:
-                                st.write("📄 Comprobante PDF adjunto")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("Aprobar", key=f"apr_{idx}"):
-                                df.loc[idx, "estado"] = "Aprobado"
-                                df.loc[idx, "aprobado_por"] = usuario
-                                df.to_csv(DATA_FILE, index=False)
-                                st.success("Aprobado")
-                                st.rerun()
-                        with col2:
-                            if st.button("Rechazar", key=f"rec_{idx}"):
-                                df.loc[idx, "estado"] = "Rechazado"
-                                df.to_csv(DATA_FILE, index=False)
-                                st.success("Rechazado")
-                                st.rerun()
+            for idx, row in pendientes.iterrows():
+                with st.expander(f"{row['fecha']} | {row['usuario']} | S/ {row['monto']:.2f}"):
+                    st.write("**Descripción:**", row["descripcion"])
+                    st.write("**Categoría:**", row["categoria"])
+                    if row["comprobante"]:
+                        if row["comprobante"].lower().endswith((".jpg", ".png", ".jpeg")):
+                            st.image(row["comprobante"], use_column_width=True)
+                        else:
+                            st.write("📄 Comprobante PDF adjunto")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("Aprobar", key=f"apr_{idx}"):
+                            df.loc[idx, "estado"] = "Aprobado"
+                            df.loc[idx, "aprobado_por"] = usuario
+                            df.to_csv(DATA_FILE, index=False)
+                            st.success("Aprobado")
+                            st.rerun()
+                    with col2:
+                        if st.button("Rechazar", key=f"rec_{idx}"):
+                            df.loc[idx, "estado"] = "Rechazado"
+                            df.to_csv(DATA_FILE, index=False)
+                            st.success("Rechazado")
+                            st.rerun()
