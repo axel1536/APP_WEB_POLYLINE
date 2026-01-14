@@ -49,91 +49,103 @@ def mostrar_caja_chica():
     st.header(f"Obra: {obra_nombre}")
     st.subheader("Caja Chica")
 
-    # Saldo actual arriba
+    # Totales arriba
     ingresos, egresos_aprobados, saldo = calcular_totales()
-    st.metric("Saldo actual", f"S/ {saldo:,.2f}", delta_color="normal")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Ingresos", f"S/ {ingresos:,.2f}", delta_color="normal")
+    col2.metric("Total Egresos aprobados", f"S/ {egresos_aprobados:,.2f}", delta_color="inverse")
+    col3.metric("Saldo actual", f"S/ {saldo:,.2f}", delta_color="normal")
 
-    # Total Ingresos + tabla de ingresos
-    st.markdown("### Total Ingresos (reposiciones)")
-    st.metric("", f"S/ {ingresos:,.2f}", delta_color="normal")
+    tab_reg, tab_mis, tab_apr = st.tabs(["Registrar", "Mis movimientos", "Aprobaciones"])
 
-    df = cargar_movimientos()
-    ingresos_df = df[df["tipo"] == "ingreso"]
-    if ingresos_df.empty:
-        st.info("No hay ingresos registrados aún")
-    else:
-        st.dataframe(
-            ingresos_df[["fecha", "monto", "descripcion", "categoria", "estado", "aprobado_por"]].sort_values("fecha", ascending=False),
-            use_container_width=True,
-            hide_index=True,
-            column_config={"monto": st.column_config.NumberColumn("Monto", format="S/. %.2f")}
-        )
+    with tab_reg:
+        # Formulario para INGRESOS (solo jefe)
+        st.markdown("### Registrar Ingreso (reposición)")
+        if not es_jefe:
+            st.info("Solo el jefe puede registrar ingresos/reposiciones")
+        else:
+            with st.form("form_ingreso"):
+                monto_ing = st.number_input("Monto S/. (reposición)", min_value=0.01, step=0.01, format="%.2f", key="monto_ing")
+                desc_ing = st.text_input("Descripción / motivo de la reposición", key="desc_ing")
+                cat_ing = st.selectbox("Categoría", [
+                    "Reposición fondo", "Transferencia banco", "Otros ingresos"
+                ], key="cat_ing")
+                comp_ing = st.file_uploader("Comprobante (opcional)", type=["jpg", "png", "pdf"], key="comp_ing")
 
-    # Total Egresos aprobados + tabla de egresos aprobados
-    st.markdown("### Total Egresos aprobados (gastos)")
-    st.metric("", f"S/ {egresos_aprobados:,.2f}", delta_color="inverse")
-
-    egresos_aprobados_df = df[(df["tipo"] == "egreso") & (df["estado"] == "Aprobado")]
-    if egresos_aprobados_df.empty:
-        st.info("No hay egresos aprobados aún")
-    else:
-        st.dataframe(
-            egresos_aprobados_df[["fecha", "monto", "descripcion", "categoria", "estado", "aprobado_por"]].sort_values("fecha", ascending=False),
-            use_container_width=True,
-            hide_index=True,
-            column_config={"monto": st.column_config.NumberColumn("Monto", format="S/. %.2f")}
-        )
-
-    # Botón de registrar
-    if st.button("Registrar nuevo movimiento"):
-        st.session_state["mostrar_form_registro"] = True
-        st.rerun()
-
-    if st.session_state.get("mostrar_form_registro", False):
-        with st.form("form_registro_caja"):
-            tipo = st.radio("Tipo", ["Egreso (gasto)", "Ingreso (reposición)"], horizontal=True)
-            tipo_val = "egreso" if "Egreso" in tipo else "ingreso"
-
-            monto = st.number_input("Monto S/.", min_value=0.01, step=0.01, format="%.2f")
-            descripcion = st.text_input("Descripción / motivo")
-            categoria = st.selectbox("Categoría", [
-                "Viáticos", "Transporte", "Materiales menores", "Limpieza/oficina", "Imprevistos", "Otros"
-            ])
-            comprobante = st.file_uploader("Comprobante (foto/PDF)", type=["jpg", "png", "pdf"])
-
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.form_submit_button("Registrar"):
-                    if monto > 0:
-                        ruta = guardar_comprobante(comprobante, usuario) if comprobante else ""
+                if st.form_submit_button("Registrar Ingreso", type="primary"):
+                    if monto_ing > 0:
+                        ruta = guardar_comprobante(comp_ing, usuario) if comp_ing else ""
                         mov = {
                             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                             "usuario": usuario,
-                            "tipo": tipo_val,
-                            "monto": monto,
-                            "descripcion": descripcion,
-                            "categoria": categoria,
+                            "tipo": "ingreso",
+                            "monto": monto_ing,
+                            "descripcion": desc_ing,
+                            "categoria": cat_ing,
                             "comprobante": ruta,
-                            "estado": "Aprobado" if tipo_val == "ingreso" else "Pendiente",
-                            "aprobado_por": "Sistema" if tipo_val == "ingreso" else ""
+                            "estado": "Aprobado",
+                            "aprobado_por": usuario
                         }
                         guardar_movimiento(mov)
-                        st.success("Movimiento registrado correctamente")
-                        st.session_state["mostrar_form_registro"] = False
+                        st.success("Ingreso registrado correctamente")
                         st.rerun()
                     else:
                         st.error("El monto debe ser mayor a 0")
-            with col2:
-                if st.form_submit_button("Cancelar"):
-                    st.session_state["mostrar_form_registro"] = False
-                    st.rerun()
 
-    # Pestaña Aprobaciones (solo jefe)
-    if es_jefe:
-        st.subheader("Aprobaciones pendientes")
+        st.divider()
+
+        # Formulario para EGRESOS (todos)
+        st.markdown("### Registrar Egreso (gasto)")
+        with st.form("form_egreso"):
+            monto_egr = st.number_input("Monto S/. (gasto)", min_value=0.01, step=0.01, format="%.2f", key="monto_egr")
+            desc_egr = st.text_input("Descripción / motivo del gasto", key="desc_egr")
+            cat_egr = st.selectbox("Categoría", [
+                "Viáticos", "Transporte", "Materiales menores", "Limpieza/oficina", "Imprevistos", "Otros"
+            ], key="cat_egr")
+            comp_egr = st.file_uploader("Comprobante (foto/PDF)", type=["jpg", "png", "pdf"], key="comp_egr")
+
+            if st.form_submit_button("Registrar Egreso", type="primary"):
+                if monto_egr > 0:
+                    ruta = guardar_comprobante(comp_egr, usuario) if comp_egr else ""
+                    mov = {
+                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "usuario": usuario,
+                        "tipo": "egreso",
+                        "monto": monto_egr,
+                        "descripcion": desc_egr,
+                        "categoria": cat_egr,
+                        "comprobante": ruta,
+                        "estado": "Pendiente",
+                        "aprobado_por": ""
+                    }
+                    guardar_movimiento(mov)
+                    st.success("Egreso registrado. Espera aprobación del jefe.")
+                    st.rerun()
+                else:
+                    st.error("El monto debe ser mayor a 0")
+
+    with tab_mis:
+        df = cargar_movimientos()
+        mios = df[df["usuario"] == usuario]
+        if mios.empty:
+            st.info("No tienes movimientos registrados aún")
+        else:
+            st.dataframe(
+                mios[["fecha", "tipo", "monto", "descripcion", "categoria", "estado"]].sort_values("fecha", ascending=False),
+                use_container_width=True,
+                hide_index=True,
+                column_config={"monto": st.column_config.NumberColumn("Monto", format="S/. %.2f")}
+            )
+
+    with tab_apr:
+        if not es_jefe:
+            st.info("Solo el jefe puede aprobar movimientos")
+            return
+
+        df = cargar_movimientos()
         pendientes = df[(df["tipo"] == "egreso") & (df["estado"] == "Pendiente")]
         if pendientes.empty:
-            st.success("No hay gastos pendientes")
+            st.success("No hay gastos pendientes de aprobación")
         else:
             for idx, row in pendientes.iterrows():
                 with st.expander(f"{row['fecha']} | {row['usuario']} | S/ {row['monto']:.2f}"):
