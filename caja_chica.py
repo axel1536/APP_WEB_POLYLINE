@@ -7,108 +7,131 @@ from datetime import datetime
 DATA_FILE = "caja_chica/movimientos.csv"
 COMPROBANTES_DIR = "caja_chica/comprobantes"
 
-def init_caja():
+def inicializar_caja():
     os.makedirs(COMPROBANTES_DIR, exist_ok=True)
     if not os.path.exists(DATA_FILE):
-        pd.DataFrame(columns=[
-            "fecha", "usuario", "tipo", "monto", "descripcion", 
-            "categoria", "comprobante", "estado", "aprobado_por"
-        ]).to_csv(DATA_FILE, index=False)
+        columnas = ["fecha", "usuario", "tipo", "monto", "descripcion", "categoria", "comprobante", "estado", "aprobado_por"]
+        pd.DataFrame(columns=columnas).to_csv(DATA_FILE, index=False)
 
-def load_movimientos():
-    init_caja()
+def cargar_movimientos():
+    inicializar_caja()
     return pd.read_csv(DATA_FILE)
 
-def save_movimiento(row):
-    df = load_movimientos()
-    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+def guardar_movimiento(mov):
+    df = cargar_movimientos()
+    df = pd.concat([df, pd.DataFrame([mov])], ignore_index=True)
     df.to_csv(DATA_FILE, index=False)
 
-def get_saldo():
-    df = load_movimientos()
+def calcular_totales():
+    df = cargar_movimientos()
     ingresos = df[df["tipo"] == "ingreso"]["monto"].sum()
-    egresos = df[(df["tipo"] == "egreso") & (df["estado"] == "Aprobado")]["monto"].sum()
-    return ingresos - egresos
+    egresos_aprobados = df[(df["tipo"] == "egreso") & (df["estado"] == "Aprobado")]["monto"].sum()
+    saldo = ingresos - egresos_aprobados
+    return ingresos, egresos_aprobados, saldo
 
-def save_comprobante(file, usuario):
-    if not file:
+def guardar_comprobante(archivo, usuario):
+    if not archivo:
         return ""
-    ext = os.path.splitext(file.name)[1]
+    ext = os.path.splitext(archivo.name)[1]
     nombre = f"{usuario}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
-    path = os.path.join(COMPROBANTES_DIR, nombre)
-    with open(path, "wb") as f:
-        f.write(file.getbuffer())
-    return path
+    ruta = os.path.join(COMPROBANTES_DIR, nombre)
+    with open(ruta, "wb") as f:
+        f.write(archivo.getbuffer())
+    return ruta
 
-def mostrar_caja():
-    init_caja()
-    usuario = st.session_state.get("user", "desconocido")
+def mostrar_caja_chica():
+    inicializar_caja()
+    usuario = st.session_state.get("usuario_logueado", "desconocido")
     es_jefe = st.session_state["auth"] == "jefe"
 
-    saldo = get_saldo()
-    st.metric("Saldo Caja Chica", f"S/ {saldo:,.2f}")
+    # Nombre de la obra arriba (tomado de la app principal)
+    obra_nombre = st.session_state.get("obra_nombre", "Obra seleccionada")
+    st.header(f"Obra: {obra_nombre}")
+    st.subheader("Caja Chica")
+
+    # Totales arriba (lo que pediste)
+    ingresos, egresos_aprobados, saldo = calcular_totales()
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Ingresos", f"S/ {ingresos:,.2f}")
+    col2.metric("Total Egresos aprobados", f"S/ {egresos_aprobados:,.2f}")
+    col3.metric("Saldo actual", f"S/ {saldo:,.2f}", delta_color="normal")
 
     tab_reg, tab_mis, tab_apr = st.tabs(["Registrar", "Mis movimientos", "Aprobaciones"])
 
     with tab_reg:
-        with st.form("reg_caja"):
-            tipo = st.radio("Tipo", ["Egreso (gasto)", "Ingreso (reposición)"])
+        with st.form("form_registro_caja"):
+            tipo = st.radio("Tipo", ["Egreso (gasto)", "Ingreso (reposición)"], horizontal=True)
             tipo_val = "egreso" if "Egreso" in tipo else "ingreso"
 
-            monto = st.number_input("Monto S/", min_value=0.01, step=0.1)
-            desc = st.text_input("Descripción")
-            cat = st.selectbox("Categoría", ["Viáticos", "Imprevistos", "Oficina", "Transporte", "Otros"])
-            comp = st.file_uploader("Comprobante", type=["jpg","png","pdf"])
+            monto = st.number_input("Monto S/.", min_value=0.01, step=0.01, format="%.2f")
+            descripcion = st.text_input("Descripción / motivo")
+            categoria = st.selectbox("Categoría", [
+                "Viáticos", "Transporte", "Materiales menores", "Limpieza/oficina", "Imprevistos", "Otros"
+            ])
+            comprobante = st.file_uploader("Comprobante (foto/PDF)", type=["jpg", "png", "pdf"])
 
             if st.form_submit_button("Registrar"):
                 if monto > 0:
-                    ruta = save_comprobante(comp, usuario) if comp else ""
-                    row = {
+                    ruta = guardar_comprobante(comprobante, usuario) if comprobante else ""
+                    mov = {
                         "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                         "usuario": usuario,
                         "tipo": tipo_val,
                         "monto": monto,
-                        "descripcion": desc,
-                        "categoria": cat,
+                        "descripcion": descripcion,
+                        "categoria": categoria,
                         "comprobante": ruta,
-                        "estado": "Pendiente" if tipo_val == "egreso" else "Aprobado",
-                        "aprobado_por": "" if tipo_val == "egreso" else "Auto"
+                        "estado": "Aprobado" if tipo_val == "ingreso" else "Pendiente",
+                        "aprobado_por": "Sistema" if tipo_val == "ingreso" else ""
                     }
-                    save_movimiento(row)
-                    st.success("Registrado")
+                    guardar_movimiento(mov)
+                    st.success("Movimiento registrado correctamente")
                     st.rerun()
+                else:
+                    st.error("El monto debe ser mayor a 0")
 
     with tab_mis:
-        df = load_movimientos()
+        df = cargar_movimientos()
         mios = df[df["usuario"] == usuario]
         if mios.empty:
-            st.info("Sin movimientos")
+            st.info("No tienes movimientos registrados aún")
         else:
-            st.dataframe(mios[["fecha", "tipo", "monto", "descripcion", "estado"]])
+            st.dataframe(
+                mios[["fecha", "tipo", "monto", "descripcion", "categoria", "estado"]].sort_values("fecha", ascending=False),
+                use_container_width=True,
+                hide_index=True,
+                column_config={"monto": st.column_config.NumberColumn("Monto", format="S/. %.2f")}
+            )
 
     with tab_apr:
         if not es_jefe:
-            st.info("Solo jefe")
-            return
-        df = load_movimientos()
-        pend = df[(df["tipo"] == "egreso") & (df["estado"] == "Pendiente")]
-        if pend.empty:
-            st.success("No hay pendientes")
+            st.info("Solo el jefe puede aprobar movimientos")
         else:
-            for i, row in pend.iterrows():
-                with st.expander(f"{row['fecha']} - {row['usuario']} - S/ {row['monto']}"):
-                    st.write(row["descripcion"])
-                    st.write(row["categoria"])
-                    if row["comprobante"]:
-                        if row["comprobante"].endswith((".jpg",".png")):
-                            st.image(row["comprobante"])
-                    col1, col2 = st.columns(2)
-                    if col1.button("Aprobar", key=f"ap_{i}"):
-                        df.loc[i, "estado"] = "Aprobado"
-                        df.loc[i, "aprobado_por"] = usuario
-                        df.to_csv(DATA_FILE, index=False)
-                        st.rerun()
-                    if col2.button("Rechazar", key=f"re_{i}"):
-                        df.loc[i, "estado"] = "Rechazado"
-                        df.to_csv(DATA_FILE, index=False)
-                        st.rerun()
+            df = cargar_movimientos()
+            pendientes = df[(df["tipo"] == "egreso") & (df["estado"] == "Pendiente")]
+            if pendientes.empty:
+                st.success("No hay gastos pendientes de aprobación")
+            else:
+                for idx, row in pendientes.iterrows():
+                    with st.expander(f"{row['fecha']} | {row['usuario']} | S/ {row['monto']:.2f}"):
+                        st.write("**Descripción:**", row["descripcion"])
+                        st.write("**Categoría:**", row["categoria"])
+                        if row["comprobante"]:
+                            if row["comprobante"].lower().endswith((".jpg", ".png", ".jpeg")):
+                                st.image(row["comprobante"], use_column_width=True)
+                            else:
+                                st.write("📄 Comprobante PDF adjunto")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("Aprobar", key=f"apr_{idx}"):
+                                df.loc[idx, "estado"] = "Aprobado"
+                                df.loc[idx, "aprobado_por"] = usuario
+                                df.to_csv(DATA_FILE, index=False)
+                                st.success("Aprobado")
+                                st.rerun()
+                        with col2:
+                            if st.button("Rechazar", key=f"rec_{idx}"):
+                                df.loc[idx, "estado"] = "Rechazado"
+                                df.to_csv(DATA_FILE, index=False)
+                                st.success("Rechazado")
+                                st.rerun()
